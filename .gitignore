@@ -1,3 +1,9 @@
+# test compilation stuff
+test.c
+CMakeLists.txt
+compile.sh
+
+
 # Prerequisites
 *.d
 
