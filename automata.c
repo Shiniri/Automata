@@ -309,3 +309,111 @@ DFSA * dfsa_concatenation(DFSA * automaton_1, DFSA * automaton_2)
 
     return new_automaton;
 }
+
+
+/*
+*   DFSA Kleene Closure: connect all accept states of automaton back to its initial state
+*   via epsilon-transition
+*/
+DFSA * dfsa_kleene_closure(DFSA * automaton)
+{
+    DFSA * new_automaton = dfsa_copy_constructor(automaton);
+    for (int state_index = 0; state_index < new_automaton->state_count; state_index++)
+    {
+        if (new_automaton->states[state_index]->accept_state == 1)
+        {
+            DFSA_TRANS * new_transition = dfsa_trans_constructor(new_automaton->initial_state, '\0');
+            if (new_transition == NULL | !dfsa_state_add_trans(new_automaton->states[state_index], new_transition))
+            {
+                dfsa_destructor(new_automaton);
+                return NULL;
+            }
+        }
+    }
+
+    return new_automaton;
+}
+
+
+/*----------*/
+/*  Regex   */
+/*----------*/
+
+/*
+*   Append new automaton to pre-defined stack, update a stack size variable by ++
+*/
+int dfsa_stack_push(DFSA *** stack, DFSA * automaton, unsigned int * stack_size) 
+{
+    *stack = realloc(*stack, (*stack_size + 1) * sizeof(DFSA *));
+    if (*stack == NULL)
+    {
+        return 0;
+    }
+    (*stack)[(*stack_size)++] = automaton;
+    return 1;
+}
+
+
+/*
+*   A minimal implementation of an algorithm constructing DFSAs from a given
+*   regex expression. Does not handle most cases usually handled by regex libraries,
+*   such as escape characters or encapsulations / character classes.
+*   Handles each character which is not reserved as basic operand.
+*/
+DFSA *dfsa_myt_construction(const char *regex) 
+{
+    // Variables to track algorithm state
+    DFSA ** dfsa_stack = NULL;
+    unsigned int current_stack_size = 0;
+    const int regex_length = strlen(regex);
+    DFSA * new_automaton = NULL;
+
+    for (int char_index = 0; char_index < regex_length; char_index++) 
+    {
+        switch (regex[char_index]) 
+        {
+            case '|':
+                new_automaton = dfsa_union(dfsa_stack[current_stack_size - 2], dfsa_stack[current_stack_size - 1]);
+                break;
+
+            case '.':
+                new_automaton = dfsa_concatenation(dfsa_stack[current_stack_size - 2], dfsa_stack[current_stack_size - 1]);
+                break;
+
+            case '*':
+                new_automaton = dfsa_kleene_closure(dfsa_stack[current_stack_size - 1]);
+                break;
+
+            default:
+                // Base case: simple automaton with 1x initial, 1x accept state and 1x transition with
+                // single character
+                new_automaton = dfsa_constructor();
+                DFSA_STATE * single_accept_state = dfsa_state_constructor(1);
+                if (new_automaton == NULL | single_accept_state == NULL | !dfsa_add_state(new_automaton, single_accept_state))
+                {
+                    return NULL;
+                }
+                DFSA_TRANS * single_transition = dfsa_trans_constructor(new_automaton->states[1], regex[char_index]);
+                if (single_transition == NULL | dfsa_state_add_trans(new_automaton->initial_state, single_transition))
+                {
+                    return NULL;
+                }
+                break;
+        }
+
+        // dfsa_stack_push uses a deep copy of the automaton 
+        if (new_automaton != NULL | !dfsa_stack_push(&dfsa_stack, new_automaton, &current_stack_size)) 
+        {
+            return NULL;
+        }
+    }
+
+    // Free stack and associated memory
+    for (int stack_index = 0; stack_index < current_stack_size; stack_index++) 
+    {
+        dfsa_destructor(dfsa_stack[stack_index]);
+    }
+    free(dfsa_stack);
+
+    return new_automaton;
+}

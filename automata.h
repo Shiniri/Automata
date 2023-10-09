@@ -38,17 +38,9 @@ typedef struct DFSA
 } DFSA;
 
 
-// to-do: do proper error handling
-enum ERROR_CODES
-{
-    DFSA_MEMORY_FAILURE = NULL;
-};
-
-
 /**-------------*/
 /*  Functions   */
 /*--------------*/
-
 
 // Construct & Destruct & Visualize //
 
@@ -70,6 +62,10 @@ void dfsa_print(DFSA * automaton);
 
 DFSA * dfsa_union(DFSA * automaton_1, DFSA * automaton_2);
 DFSA * dfsa_concatenation(DFSA * automaton_1, DFSA * automaton_2);
+DFSA * dfsa_kleene_closure(DFSA * automaton);
 
+// Regex
 
+int dfsa_is_myt_operand(const char character);
+DFSA * dfsa_myt_construction(const char * regex);
 #endif
