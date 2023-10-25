@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 
 /*------------*/
@@ -66,6 +67,6 @@ DFSA * dfsa_kleene_closure(DFSA * automaton);
 
 // Regex
 
-int dfsa_is_myt_operand(const char character);
-DFSA * dfsa_myt_construction(const char * regex);
+DFSA * myt_regex_to_dfsa(const char * regex);
+
 #endif

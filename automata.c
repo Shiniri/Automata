@@ -323,7 +323,7 @@ DFSA * dfsa_kleene_closure(DFSA * automaton)
         if (new_automaton->states[state_index]->accept_state == 1)
         {
             DFSA_TRANS * new_transition = dfsa_trans_constructor(new_automaton->initial_state, '\0');
-            if (new_transition == NULL | !dfsa_state_add_trans(new_automaton->states[state_index], new_transition))
+            if ((new_transition == NULL) | !dfsa_state_add_trans(new_automaton->states[state_index], new_transition))
             {
                 dfsa_destructor(new_automaton);
                 return NULL;
@@ -339,81 +339,146 @@ DFSA * dfsa_kleene_closure(DFSA * automaton)
 /*  Regex   */
 /*----------*/
 
-/*
-*   Append new automaton to pre-defined stack, update a stack size variable by ++
-*/
-int dfsa_stack_push(DFSA *** stack, DFSA * automaton, unsigned int * stack_size) 
-{
-    *stack = realloc(*stack, (*stack_size + 1) * sizeof(DFSA *));
-    if (*stack == NULL)
-    {
-        return 0;
-    }
-    (*stack)[(*stack_size)++] = automaton;
-    return 1;
-}
-
 
 /*
 *   A minimal implementation of an algorithm constructing DFSAs from a given
 *   regex expression. Does not handle most cases usually handled by regex libraries,
-*   such as escape characters or encapsulations / character classes.
+*   such as encapsulations / character classes.
 *   Handles each character which is not reserved as basic operand.
 */
-DFSA *dfsa_myt_construction(const char *regex) 
+DFSA * myt_regex_to_dfsa(const char * regex) 
 {
-    // Variables to track algorithm state
-    DFSA ** dfsa_stack = NULL;
-    unsigned int current_stack_size = 0;
-    const int regex_length = strlen(regex);
-    DFSA * new_automaton = NULL;
-
-    for (int char_index = 0; char_index < regex_length; char_index++) 
+    if (!regex || *regex == '\0') 
     {
-        switch (regex[char_index]) 
+        // Empty regex, return an automaton that accepts only the empty string
+        DFSA * automaton = dfsa_constructor();
+        DFSA_STATE * single_state = dfsa_state_constructor(1);
+        if (automaton == NULL | single_state == NULL)
         {
-            case '|':
-                new_automaton = dfsa_union(dfsa_stack[current_stack_size - 2], dfsa_stack[current_stack_size - 1]);
-                break;
-
-            case '.':
-                new_automaton = dfsa_concatenation(dfsa_stack[current_stack_size - 2], dfsa_stack[current_stack_size - 1]);
-                break;
-
-            case '*':
-                new_automaton = dfsa_kleene_closure(dfsa_stack[current_stack_size - 1]);
-                break;
-
-            default:
-                // Base case: simple automaton with 1x initial, 1x accept state and 1x transition with
-                // single character
-                new_automaton = dfsa_constructor();
-                DFSA_STATE * single_accept_state = dfsa_state_constructor(1);
-                if (new_automaton == NULL | single_accept_state == NULL | !dfsa_add_state(new_automaton, single_accept_state))
-                {
-                    return NULL;
-                }
-                DFSA_TRANS * single_transition = dfsa_trans_constructor(new_automaton->states[1], regex[char_index]);
-                if (single_transition == NULL | dfsa_state_add_trans(new_automaton->initial_state, single_transition))
-                {
-                    return NULL;
-                }
-                break;
-        }
-
-        // dfsa_stack_push uses a deep copy of the automaton 
-        if (new_automaton != NULL | !dfsa_stack_push(&dfsa_stack, new_automaton, &current_stack_size)) 
-        {
+            printf("Memory error during allocation.\n");
             return NULL;
         }
+
+        if(!dfsa_add_state(automaton, single_state))
+        {
+            printf("Failed to add state.\n");
+            return NULL;
+        }
+
+        DFSA_TRANS * single_transition = dfsa_trans_constructor(single_state, '\0');
+        if (single_transition == NULL)
+        {
+            printf("Memory error during allocation.\n");
+            return NULL;
+        }
+
+        if(!dfsa_state_add_trans(automaton->initial_state, single_transition))
+        {
+            printf("Failed to add state.\n");
+            return NULL;
+        }
+
+        return automaton;
     }
 
-    // Free stack and associated memory
-    for (int stack_index = 0; stack_index < current_stack_size; stack_index++) 
+    char ch = *regex;
+
+    // If the character is an escape character, advance and treat the next character as a literal
+    if (ch == '\\') 
     {
-        dfsa_destructor(dfsa_stack[stack_index]);
+        regex++;
+        ch = *regex;
+        if (!ch) { return NULL; }
     }
-    free(dfsa_stack);
 
-    return new_automaton;
+    // Handle union operation
+    if (ch == '|') 
+    {
+        regex++;
+        DFSA * left = myt_regex_to_dfsa(regex);
+        if (left == NULL)
+        {
+            printf("Failed to create automaton.\n");
+            return NULL;
+        }
+
+        while (*regex != '|' && *regex != '\0') { regex++; }
+        regex++;  // skip the '|'
+
+        DFSA * right = myt_regex_to_dfsa(regex);
+        DFSA * united = dfsa_union(left, right);
+        if (right == NULL | united == NULL)
+        {
+            printf("Failed to create automaton.\n");
+            return NULL;
+        }
+
+        dfsa_destructor(left);
+        dfsa_destructor(right);
+
+        return united;
+    }
+
+    // Handle concatenation (implicit)
+    if (ch != '(' && ch != '*' && ch != '|') 
+    {
+        DFSA * left = myt_regex_to_dfsa(regex);
+        DFSA * right = myt_regex_to_dfsa(regex + 1);
+        if (left == NULL | right == NULL)
+        {
+            printf("Failed to create automaton.\n");
+            return NULL;
+        }
+
+        DFSA * concatenated = dfsa_concatenation(left, right);
+        if (concatenated == NULL)
+        {
+            printf("Failed to create automaton.\n");
+            return NULL;
+        }
+
+        dfsa_destructor(left);
+        dfsa_destructor(right);
+
+        return concatenated;
+    }
+
+    // Handle Kleene closure
+    if (ch == '*') 
+    {
+        regex++;
+        DFSA * automaton = myt_regex_to_dfsa(regex);
+        DFSA * closed = dfsa_kleene_closure(automaton);
+        dfsa_destructor(automaton);
+        return closed;
+    }
+
+    // Handle parentheses (grouping) -- for simplicity, assume balanced parentheses
+    if (ch == '(') 
+    {
+        int depth = 1;
+        const char * end = regex + 1;
+        while (*end && depth > 0) 
+        {
+            if (*end == '(') depth++;
+            else if (*end == ')') depth--;
+            end++;
+        }
+
+        char sub_regex[end - regex];
+        strncpy(sub_regex, regex + 1, end - regex - 2);  // +1 and -2 to exclude the parentheses
+        sub_regex[end - regex - 2] = '\0';
+
+        DFSA * automaton = myt_regex_to_dfsa(sub_regex);
+        if (automaton == NULL)
+        {
+            printf("Failed to create automaton.\n");
+            return NULL;
+        }
+
+        return automaton;
+    }
+
+    printf("Error: Unexpected character in regex.\n");
+    return NULL;
 }
